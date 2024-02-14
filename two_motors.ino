@@ -1,7 +1,9 @@
 #include "GyverStepper.h"
+#include "GyverTimers.h"
 
 
 #define MAX_SPEED 5000
+
 #define MIN_SPEED 1
 #define INI_SPEED 1000
 #define AccelerationK1 1.1
@@ -37,12 +39,16 @@ void setup() {
 
   //Калибровка моторов
   stepper1.setRunMode(KEEP_SPEED);
-  stepper1.setSpeed(INI_SPEED);
   stepper1.setAcceleration(INI_SPEED *5);
+  stepper1.setSpeed(INI_SPEED);
+
+ 
   stepper2.setRunMode(KEEP_SPEED);
-  stepper2.setSpeed(INI_SPEED);
   stepper2.setAcceleration(INI_SPEED * 5);
+  stepper2.setSpeed(INI_SPEED);
   stepper2.reverse(true);
+
+  
   while (!digitalReadFast(pin_POSITION1)) { // Пока не доехали до датчика
     stepper1.tick();
   }
@@ -74,6 +80,25 @@ void setup() {
   stepper2.setMaxSpeed(speedM2);
   stepper2.setAcceleration(speedM2 * AccelerationK2);
   stepper2.reverse(true);
+
+
+   // настраиваем прерывания с периодом, при котором 
+  // система сможет обеспечить максимальную скорость мотора.
+  // Для большей плавности лучше лучше взять период чуть меньше, например в два раза
+
+  uint32_t timer_period = (stepper1.getMinPeriod()>stepper2.getMinPeriod()? stepper1.getMinPeriod()/2 : stepper2.getMinPeriod()/2);
+  Timer2.setPeriod(timer_period);
+
+  // взводим прерывание
+  Timer2.enableISR();
+
+  
+}
+
+// обработчик
+ISR(TIMER2_A) {
+  stepper1.tick(); // тикаем тут
+   stepper2.tick(); // тикаем тут
 }
 
 boolean startM1 = false;
