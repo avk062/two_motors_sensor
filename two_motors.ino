@@ -1,35 +1,38 @@
+#define DRIVER_STEP_TIME 5  // меняем задержку на 10 мкс
 #include "GyverStepper.h"
 #include "GyverTimers.h"
 
+#define MAX_SPEED 8000      // Максимальная скорость для моторов
+#define MIN_SPEED 1600       // Ограничение минимальной скорости
+#define AccelerationK1 1.9    // Ускорение мотора 1
+#define AccelerationK2 1.9    // Ускорение мотора 2
+//============================
+/*    НАСТРОЙКА МОТОР 1*/
+#define STEPS1 1600
+#define pin_PUL1 2            // PUL+ мотора 1
+#define pin_DIR1 3            // DIR+ мотора 1
+#define pin_START1 4          // Пин датчика мешка мотора 1
+#define pin_POSITION1 5       // Пин Позиционирования мотора 1
+#define pin_SETT1 14          // Пин потенциометра скорости мотора 1
+//===========================
+/*    НАСТРОЙКА МОТОР 2*/
+#define STEPS2 1600
+#define pin_PUL2 6            // PUL+ мотора 2
+#define pin_DIR2 7            // DIR+ мотора 2
+#define pin_START2  8         // Пин датчика мешка мотора 2
+#define pin_POSITION2 9       // Пин Позиционирования мотора 2
+#define pin_SETT2 15          // Пин потенциометра скорости мотора 2
 
-#define MAX_SPEED 5000
-
-#define MIN_SPEED 1
-#define INI_SPEED 1000
-#define AccelerationK1 1.1
-#define AccelerationK2 1.1
-
-#define STEPS1 800
-#define pin_PUL1 2            // PUL+ первого шаговика
-#define pin_DIR1 3            // DIR+ первого шаговика
-#define pin_START1 4          // Пин датчика мешка - 1
-#define pin_POSITION1 5       // Пин Позиционирования - 1
-#define pin_SETT1 14          // Пин потенциометра скорости - 1
-
-#define STEPS2 800
-#define pin_PUL2 6            // PUL+ 2 шаговика
-#define pin_DIR2 7            // DIR+ 2 шаговика
-#define pin_START2  8         // Пин датчика мешка - 2
-#define pin_POSITION2 9       // Пин Позиционирования - 2
-#define pin_SETT2 17          // Пин потенциометра скорости - 2
-
-//Инициалихируем моторы
+//Инициализируем моторы
 GStepper<STEPPER2WIRE> stepper1(STEPS1, pin_PUL1, pin_DIR1);
 GStepper<STEPPER2WIRE> stepper2(STEPS2, pin_PUL2, pin_DIR2);
 
-int32_t speedM1 = 0;
-int32_t speedM2 = 0;
+uint32_t speedM1 = 0; //Расчетная скорость мотора 1
+uint32_t speedM2 = 0; //Расчетная скорость мотора 2
+
+
 void setup() {
+  
   pinMode(pin_SETT1, INPUT);
   pinMode(pin_START1, INPUT_PULLUP);
   pinMode(pin_POSITION1, INPUT_PULLUP);
@@ -37,18 +40,102 @@ void setup() {
   pinMode(pin_START2, INPUT_PULLUP);
   pinMode(pin_POSITION2, INPUT_PULLUP);
 
+  speedM1 = map(analogRead(pin_SETT1), 0, 1023, MIN_SPEED, MAX_SPEED);
+  speedM2 = map(analogRead(pin_SETT2), 0, 1023, MIN_SPEED, MAX_SPEED);
+
+    setStartMotor();  //  Выводим моторы на стартовую позицию
+
+
+  Serial.begin(9600);
+ 
+  // мотор 1 просто вращается
+  stepper1.setRunMode(KEEP_SPEED);
+  stepper1.setAcceleration(speedM1 * AccelerationK1);
+  //stepper1.setSpeed(speedM1);
+
+
+  // мотор 2 просто вращается
+  stepper2.setRunMode(KEEP_SPEED);
+  stepper2.setAcceleration(speedM2 * AccelerationK2);
+  //stepper2.setSpeed(speedM2);
+  //stepper2.reverse(true);
+
+//Serial.print (stepper1.getMinPeriod() / 4);
+
+  // настраиваем прерывания с периодом, при котором
+  // система сможет обеспечить максимальную скорость мотора.
+  // Для большей плавности лучше лучше взять период чуть меньше, например в два раза
+
+
+  Timer2.setPeriod(50);
+  //Timer2.setFrequency(20000);
+
+  // взводим прерывание
+  Timer2.enableISR(CHANNEL_A);
+  Timer2.enableISR(CHANNEL_B);
+  Timer2.phaseShift(CHANNEL_B,180);
+
+
+}
+
+// обработчик
+ISR(TIMER2_A) {
+  stepper1.tick(); // тикаем тут 
+ 
+}
+
+ISR(TIMER2_B) {
+  stepper2.tick(); // тикаем тут
+}
+
+boolean startM1 = false;
+boolean startM2 = false;
+
+
+void loop() {
+
+  static uint32_t tmr2;
+  if (millis() - tmr2 >= 500) {
+    tmr2 = millis();
+   if (stepper1.getState() || stepper2.getState()){
+    Serial.print (millis()*0.001);
+    Serial.print ("---- ");
+    Serial.print ("speed1 - ");
+    Serial.print (stepper1.getSpeed());
+    Serial.print("     |      ");
+    Serial.print ("speed2 - ");
+    Serial.println (stepper2.getSpeed());
+   }
+    
+      speedM1 = map(analogRead(pin_SETT1), 0, 1023, MIN_SPEED, MAX_SPEED);
+    stepper1.setAcceleration(speedM1 * AccelerationK1);
+    if(stepper1.getState()) stepper1.setSpeed(speedM1);
+    
+      speedM2 = map(analogRead(pin_SETT2), 0, 1023, MIN_SPEED, MAX_SPEED);
+     stepper2.setAcceleration(speedM1 * AccelerationK2);
+     if(stepper2.getState()) stepper2.setSpeed(speedM2);
+  }
+
+  run_Stepper1();
+  run_Stepper2();
+
+
+
+}
+
+/*----  Установка начальной позиции для моторов  ---*/
+void setStartMotor() {
   //Калибровка моторов
   stepper1.setRunMode(KEEP_SPEED);
-  stepper1.setAcceleration(INI_SPEED *5);
-  stepper1.setSpeed(INI_SPEED);
+  stepper1.setAcceleration(speedM1*1.1);
+  stepper1.setSpeed(speedM1);
 
- 
   stepper2.setRunMode(KEEP_SPEED);
-  stepper2.setAcceleration(INI_SPEED * 5);
-  stepper2.setSpeed(INI_SPEED);
-  stepper2.reverse(true);
-
+  stepper2.setAcceleration(speedM2*1.1);
+  //stepper2.reverse(false);
+  stepper2.setSpeed(speedM2);
   
+
   while (!digitalReadFast(pin_POSITION1)) { // Пока не доехали до датчика
     stepper1.tick();
   }
@@ -59,108 +146,52 @@ void setup() {
   }
   stepper2.reset();// останавливаем мотор
   //===== Калибровка моторов
-
-  speedM1 = map(analogRead(pin_SETT1), 0, 1023, MIN_SPEED, MAX_SPEED);
-  speedM2 = map(analogRead(pin_SETT2), 0, 1023, MIN_SPEED, MAX_SPEED);
-
-
-  Serial.begin(9600);
-  Serial.print ("speed1 - ");
-  Serial.println (speedM1);
-  Serial.print ("speed2 - ");
-  Serial.println (speedM2);
-
-  // мотор 1 просто вращается
-  stepper1.setRunMode(FOLLOW_POS);
-  stepper1.setMaxSpeed(speedM1);
-  stepper1.setAcceleration(speedM1 * AccelerationK1);
-
-  // мотор 2 просто вращается
-  stepper2.setRunMode(FOLLOW_POS);
-  stepper2.setMaxSpeed(speedM2);
-  stepper2.setAcceleration(speedM2 * AccelerationK2);
-  stepper2.reverse(true);
-
-
-   // настраиваем прерывания с периодом, при котором 
-  // система сможет обеспечить максимальную скорость мотора.
-  // Для большей плавности лучше лучше взять период чуть меньше, например в два раза
-
-  uint32_t timer_period = (stepper1.getMinPeriod()>stepper2.getMinPeriod()? stepper1.getMinPeriod()/2 : stepper2.getMinPeriod()/2);
-  Timer2.setPeriod(timer_period);
-
-  // взводим прерывание
-  Timer2.enableISR();
-
-  
-}
-
-// обработчик
-ISR(TIMER2_A) {
-  stepper1.tick(); // тикаем тут
-   stepper2.tick(); // тикаем тут
-}
-
-boolean startM1 = false;
-boolean startM2 = false;
-void loop() {
-
-//  static uint32_t tmr2;
-//  if (millis() - tmr2 > 1000) {
-//    tmr2 = millis();
-//    Serial.begin(9600);
-//    Serial.print ("speed1 - ");
-//    Serial.println (speedM1);
-//    Serial.print ("speed2 - ");
-//    Serial.println (speedM2);
-//
-//  speedM1 = map(analogRead(pin_SETT1), 0, 1023, MIN_SPEED, MAX_SPEED);
-//  stepper1.setMaxSpeed(speedM1);
-//  stepper1.setAcceleration(speedM1 * AccelerationK1);
-//
-//  speedM2 = map(analogRead(pin_SETT2), 0, 1023, MIN_SPEED, MAX_SPEED);
-//  stepper1.setMaxSpeed(speedM2);
-//  stepper1.setAcceleration(speedM2 * AccelerationK2);
-//  }
-
-  run_Stepper1();
-  run_Stepper2();
-
-
-
 }
 
 void run_Stepper1() {
+ static uint32_t tmrM;
+
   // проверяем наличие старта для первого мотора
   if (!digitalReadFast(pin_START1)) {
     startM1 = true;
+   
   }
   if (startM1) {
-    if (!stepper1.tick()) {
-      stepper1.setTarget(3600);
+    if (!stepper1.getState()) {
+      //stepper1.setTarget(3600);
+      stepper1.setSpeed(speedM1);
+       tmrM = millis();
     }
   }
+if (millis() - tmrM >= 500){
   if (digitalReadFast(pin_POSITION1)) {
     startM1 = false;
     stepper1.stop();
     stepper1.reset();
   }
+}
 
 }
 
 void run_Stepper2() {
+   static uint32_t tmrM;
   if (!digitalReadFast(pin_START2)) {
     startM2 = true;
   }
   if (startM2) {
-    if (!stepper2.tick()) {
-      stepper2.setTarget(3600);
+    if (!stepper2.getState()) {
+      // stepper2.setTarget(3600);
+      stepper2.setSpeed(speedM2);
+       tmrM = millis();
     }
   }
+
+  if (millis() - tmrM >= 500){
   if (digitalReadFast(pin_POSITION2)) {
     startM2 = false;
     stepper2.stop();
     stepper2.reset();
+  }
   }
 }
 
