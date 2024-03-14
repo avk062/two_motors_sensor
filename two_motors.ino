@@ -1,10 +1,11 @@
+#define DRIVER_STEP_TIME 5  // меняем задержку на 10 мкс
 #include "GyverStepper.h"
 #include "GyverTimers.h"
 
-#define MAX_SPEED 13300       // Максимальная скорость для моторов
-#define MIN_SPEED 3000        // Ограничение минимальной скорости
-#define AccelerationK1 1.8    // Ускорение мотора 1
-#define AccelerationK2 1.8    // Ускорение мотора 2
+#define MAX_SPEED 8000      // Максимальная скорость для моторов
+#define MIN_SPEED 1600       // Ограничение минимальной скорости
+#define AccelerationK1 1.9    // Ускорение мотора 1
+#define AccelerationK2 1.9    // Ускорение мотора 2
 //============================
 /*    НАСТРОЙКА МОТОР 1*/
 #define STEPS1 1600
@@ -57,8 +58,9 @@ void setup() {
   stepper2.setRunMode(KEEP_SPEED);
   stepper2.setAcceleration(speedM2 * AccelerationK2);
   //stepper2.setSpeed(speedM2);
-  stepper2.reverse(true);
+  //stepper2.reverse(true);
 
+//Serial.print (stepper1.getMinPeriod() / 4);
 
   // настраиваем прерывания с периодом, при котором
   // система сможет обеспечить максимальную скорость мотора.
@@ -78,7 +80,8 @@ void setup() {
 
 // обработчик
 ISR(TIMER2_A) {
-  stepper1.tick(); // тикаем тут
+  stepper1.tick(); // тикаем тут 
+ 
 }
 
 ISR(TIMER2_B) {
@@ -92,7 +95,7 @@ boolean startM2 = false;
 void loop() {
 
   static uint32_t tmr2;
-  if (millis() - tmr2 >= 50) {
+  if (millis() - tmr2 >= 500) {
     tmr2 = millis();
    if (stepper1.getState() || stepper2.getState()){
     Serial.print (millis()*0.001);
@@ -124,13 +127,14 @@ void loop() {
 void setStartMotor() {
   //Калибровка моторов
   stepper1.setRunMode(KEEP_SPEED);
-  stepper1.setAcceleration(speedM1*0.25);
-  stepper1.setSpeed(speedM1*0.25);
+  stepper1.setAcceleration(speedM1*1.1);
+  stepper1.setSpeed(speedM1);
 
   stepper2.setRunMode(KEEP_SPEED);
-  stepper2.setAcceleration(speedM2*0.5);
-  stepper2.setSpeed(speedM2*0.25);
-  stepper2.reverse(true);
+  stepper2.setAcceleration(speedM2*1.1);
+  //stepper2.reverse(false);
+  stepper2.setSpeed(speedM2);
+  
 
   while (!digitalReadFast(pin_POSITION1)) { // Пока не доехали до датчика
     stepper1.tick();
@@ -145,6 +149,7 @@ void setStartMotor() {
 }
 
 void run_Stepper1() {
+ static uint32_t tmrM;
 
   // проверяем наличие старта для первого мотора
   if (!digitalReadFast(pin_START1)) {
@@ -155,18 +160,21 @@ void run_Stepper1() {
     if (!stepper1.getState()) {
       //stepper1.setTarget(3600);
       stepper1.setSpeed(speedM1);
+       tmrM = millis();
     }
   }
-
+if (millis() - tmrM >= 500){
   if (digitalReadFast(pin_POSITION1)) {
     startM1 = false;
     stepper1.stop();
     stepper1.reset();
   }
+}
 
 }
 
 void run_Stepper2() {
+   static uint32_t tmrM;
   if (!digitalReadFast(pin_START2)) {
     startM2 = true;
   }
@@ -174,12 +182,16 @@ void run_Stepper2() {
     if (!stepper2.getState()) {
       // stepper2.setTarget(3600);
       stepper2.setSpeed(speedM2);
+       tmrM = millis();
     }
   }
+
+  if (millis() - tmrM >= 500){
   if (digitalReadFast(pin_POSITION2)) {
     startM2 = false;
     stepper2.stop();
     stepper2.reset();
+  }
   }
 }
 
